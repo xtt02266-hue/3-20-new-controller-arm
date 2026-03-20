@@ -24,9 +24,7 @@ static void motor_par_send(void);
 // ================= 状态机核心 =================
 void fsm_run(fsm_t* fsm) {
 	
-    if (fsm->state != fsm_pos_init && fsm->state != fsm_protect) {//包含直接锁死功能，必须重新上电才能启动
-        motor_fault_detect(fsm, 2.8, 2);
-    }
+ 
 
     switch (fsm->state)
     {
@@ -96,7 +94,6 @@ static uint8_t motor_pos_init(void)
     ge_off(&sys);
     ctrl_set();  
     ctrl_send(); 
-    motor_disable_detect(); 
     
     if (pos_int_err < 0.06) {
         return 1; // 回零完成

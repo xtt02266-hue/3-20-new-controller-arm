@@ -4,7 +4,7 @@
 #include "geforce.h"
 #include "fsm.h"
 #include "math.h"
-
+#include "motor_protect.h"
 
 static void motor_disable_detect(void);
 static void motor_pos_protect(void);

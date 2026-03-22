@@ -7,7 +7,8 @@ typedef enum
     fsm_lock,
     fsm_geforce_off,
     fsm_judge,
-	fsm_protect,
+		fsm_protect,
+		wait_switch,
 } fsm_state_t;
 typedef struct
 {
@@ -16,6 +17,7 @@ typedef struct
 } fsm_t;
 
 void fsm_run(fsm_t* fsm);
+void fsm_run_test(fsm_t* fsm); 
 
 
 #endif

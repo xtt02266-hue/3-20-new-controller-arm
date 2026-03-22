@@ -6,14 +6,23 @@
 #include "math.h"
 #include "motor_protect.h"
 
-static void motor_disable_detect(void);
+void motor_disable_detect(void);
 static void motor_pos_protect(void);
 static void motor_vel_protect(void);    
 static void motor_tor_protect(void);
 static void motor_overtime_protect(void);
 static void motor_safe_mode(void);
 
-uint8_t global_system_halt_flag = 0; // 全局系统停机标志位
+volatile uint8_t global_system_halt_flag = 0; // 全局系统停机标志位
+
+const motor_limit_t motor_limits[6] = {
+    {.max_tor = 0.5f, .max_vel = 30, .max_pos = 3.0f, .min_pos = -3.0f},
+    {.max_tor = 2.9f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
+    {.max_tor = 2.3f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
+    {.max_tor = 1.2f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
+    {.max_tor = 1.2f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
+    {.max_tor = 0.5f, .max_vel = 30, .max_pos = 5.0f, .min_pos = -5.0f},
+};
 
 /**
  ************************************************************************
@@ -40,6 +49,12 @@ void motor_protect_run(void)
     motor_tor_protect();
     motor_disable_detect();
     motor_overtime_protect();
+    for (int i = 0; i < motor_num; i++) {
+        if(motor[i].cmd.kd_set == 0.0f) {
+            motor[i].cmd.kd_set = 0.1f; // 最小阻尼，防止完全失控
+        }
+    
+    }
 }
 
 /**
@@ -55,7 +70,7 @@ void motor_protect_run(void)
 static void motor_pos_protect(void)
 {
     motor_t *m = motor;
-    motor_limit_t *lim = motor_limits;
+    const motor_limit_t *lim = motor_limits;
 
     for (int i = 0; i < motor_num; i++, m++, lim++) {
         float max_p = lim->max_pos;
@@ -91,22 +106,21 @@ static void motor_pos_protect(void)
 static void motor_vel_protect(void)
 {
     motor_t *m = motor;
-    motor_limit_t *lim = motor_limits;
+    const motor_limit_t *lim = motor_limits;
 
     for (int i = 0; i < motor_num; i++, m++, lim++) {
         float max_v = lim->max_vel;
 
-        // 【主动预防】：限制给定位置的误差，防止目标突变导致速度失控
-        // 原理：MIT模式下稳态速度极限 V = (Kp/Kd) * pos_err，由于Kp产生的最大力矩 T_p = Kp * pos_err
+        // 【主动预防】：限制给定位置的误差，防止目标突变导致失控
         if (m->cmd.kp_set > 0.001f) {
-            float inv_kp = 1.0f / m->cmd.kp_set; // 将除法转为乘法，硬件浮点乘法远快于除法
-            // 根据最大速度计算出的允许位置误差
-            float max_err_v = (m->cmd.kd_set * inv_kp) * max_v;
-            // 根据最大力矩计算出的允许位置误差
-            float max_err_t = lim->max_tor * inv_kp;
+            float inv_kp = 1.0f / m->cmd.kp_set; 
             
-            // 取允许条件里更严格(更小)的一个误差范围
-            float limit_err = max_err_v < max_err_t ? max_err_v : max_err_t;
+            // 错误点1已修复：去除了原先基于(Kd/Kp)*max_v的误差限制。
+            // 因为当系统设定的Kd较小时，原算法会把运行误差限制得极其微小(甚至接近0)，
+            // 导致电机只要出现一点正常误差，目标位置就会被强行拉扯到当前位置，
+            // 从而使得电机无法输出必要的弹力（P力矩被吃掉），表现为其在持续抵抗重力或外力时疯狂抽搐、掉力。
+            // 现在只根据电机的最大力矩能力来限制最大位置突变。
+            float limit_err = lim->max_tor * inv_kp;
             
             float pos_err = m->cmd.pos_set - m->para.pos;
             if (pos_err > limit_err) {
@@ -116,17 +130,21 @@ static void motor_vel_protect(void)
             }
         }
 
-        // 【被动保护】：如果受外力等情况实际速度仍然超限，进入纯阻尼刹车模式
+        // 【被动保护】：如果受外力等情况实际速度仍然超限，进入超速抑制
+        // 错误点2已修复：对受重力的机械臂，绝对不能把 kp_set 设为 0！
+        // 突然把位置刚度Kp清零会导致整个机械臂突然丧失支撑力从而下坠，并在速度恢复瞬间P力矩恢复，带来极其暴力的反复震荡。
+        // 正确做法：只加大阻尼Kd进行刹车，但不剥夺原本的位置支撑刚度。
         if (m->para.vel > max_v) {
             m->cmd.vel_set = max_v;
-            m->cmd.kp_set  = 0.0f;
-            m->cmd.kd_set  = 5.0f;
+            if (m->cmd.kd_set < 3.0f) {
+                m->cmd.kd_set = 3.0f; // 增加阻尼压制速度
+            }
         }
-        // 负向超速同理，把目标速度设为 -max_vel，产生反向阻尼力矩
         else if (m->para.vel < -max_v) {
             m->cmd.vel_set = -max_v;
-            m->cmd.kp_set  = 0.0f;
-            m->cmd.kd_set  = 5.0f;
+            if (m->cmd.kd_set < 3.0f) {
+                m->cmd.kd_set = 3.0f; // 增加阻尼压制速度
+            }
         }
     }
 }
@@ -143,7 +161,7 @@ static void motor_vel_protect(void)
 static void motor_tor_protect(void)
 {
     motor_t *m = motor;
-    motor_limit_t *lim = motor_limits;
+    const motor_limit_t *lim = motor_limits;
 
     for (int i = 0; i < motor_num; i++, m++, lim++) {
         float max_t = lim->max_tor;
@@ -162,23 +180,29 @@ static void motor_tor_protect(void)
  * @brief:      motor_disable_detect: 电机通讯丢失检测与恢复函数
  * @param:      void
  * @retval:     void
- * @details:    定期（每30个控制周期）检查电机的状态码。如果检测到通讯丢失
- *              （state 为 0x0D），则向对应 CAN 总线发送清除错误帧并重新使能。
+ * @details:    定期检查电机状态码，使用高频状态机进行极其短暂的延时恢复，避免长掉电抖动
  ************************************************************************
  **/
-static void motor_disable_detect(void) 
+void motor_disable_detect(void) 
 {
     static int detect_cnt = 0;
-    detect_cnt++;
+    static uint16_t recovery_timer[6] = {0}; 
+    motor_t *m = motor;
     
-    if (detect_cnt > 30)  // 每30个周期检测一次
-    {
-        motor_t *m = motor; // 指向第一个电机motor[0]
-        for (int i = 0; i < 3; i++, m++) {
-            // 解析出 state 为 0x0D(即十进制13) 代表 D——通讯丢失
-            if (m->para.state == 0x0D) { 
-                dm4310_clear_err(&hcan1, m); // 步骤1：发送清除错误帧
-                dm4310_enable(&hcan1, m);    // 步骤2：重新使能电机
+    // 1. 高频恢复状态机（每一个控制周期都会运行，不受 30 次阈值的阻塞）
+    // 给电机留出极短的时间（如 3 毫秒）复位，肉眼和机械臂的惯性无法察觉，不会导致掉力矩抖动
+    for (int i = 0; i < motor_num; i++, m++) {
+        if (recovery_timer[i] > 0) {
+            recovery_timer[i]++;
+            
+            // 发出 clear_err 后，等待 3 个控制周期 再发 enable
+            if (recovery_timer[i] == 3) { 
+                if (i < 3) dm4310_enable(&hcan1, m);
+                else       dm4310_enable(&hcan2, m);
+            }
+            // 恢复完成，重置计时器结束状态机
+            else if (recovery_timer[i] > 5) {
+                recovery_timer[i] = 0;
             }
         }
         
@@ -189,7 +213,7 @@ static void motor_disable_detect(void)
                 dm4310_enable(&hcan2, m);    // 步骤2：重新使能电机
             }
         }
-        detect_cnt = 0; // 重置计数器
+        detect_cnt = 0; // 重置轮询计数器
     }
 }
 
@@ -211,7 +235,7 @@ static void motor_overtime_protect(void)
     uint8_t force_safe_flag = 0; // 是否有任何一个电机触发最终安全模式
     
     motor_t *m = motor;
-    motor_limit_t *lim = motor_limits;
+    const motor_limit_t *lim = motor_limits;
 
     for (int i = 0; i < motor_num; i++, m++, lim++) {
         // 判断自身是否处于异常区（包含位置越界、速度超限、力矩超限）
@@ -258,7 +282,7 @@ static void motor_safe_mode(void)
     motor_t *m = motor;
     for (int i = 0; i < motor_num; i++, m++) {
         Set_MIT_PVT(m, 0, 0, 0); 
-        Set_MIT_PD(m, 0, 5); 
+        Set_MIT_PD(m, 0, 1); 
     }
 }
 

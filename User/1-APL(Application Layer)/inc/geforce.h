@@ -5,12 +5,12 @@
 
 
 
-#define std_mg 4 //电机+打印件重量*g 估计值
-#define dis_2_3 0.12//电机2-3间距
-#define dis_3_4 0.12                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
-#define dis_4_5 0.068
+#define std_mg 4.1 //电机+打印件重量*g 估计值
+#define dis_2_3 0.117//电机2-3间距
+#define dis_3_4 0.091                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+#define dis_4_5 0.120
 #define dis_5_6 0.065  
-#define dis_3_5 0.105
+#define dis_3_5 0.146
 
 #define NUM_MOTORS 6  // 定义电机数量
 

@@ -232,7 +232,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /**********50HZ************/
 	else if(htim == &htim3)
 	{
-      fsm_run(&fsm);
+      //fsm_run(&fsm);
+		fsm_run_test(&fsm);
 	}
 }
 /* USER CODE END 4 */

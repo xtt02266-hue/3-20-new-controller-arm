@@ -4,63 +4,83 @@
 #include "geforce.h"
 #include "fsm.h"
 #include "math.h"
+#include "button_status_read.h" // 引入我们写好的高阶按键驱动模块
+#include "motor_protect.h"
+#include "motor_function.h"
 
 CoordinateSystem sys;
-static uint8_t lock_button_flag;
-static uint8_t lock_flag;
 
 
-// ================= 函数声明区 =================
-// 注意：有返回值的函数用于向状态机报告执行进度或状态
-static uint8_t motor_pos_init(void); 
-static void motor_protect(float max_t, float max_v);
-static void lock_button_init(void);
-static void motor_lock(void);
-static void lock_button_judge(fsm_t* fsm); 
-static void motor_fault_detect(fsm_t* fsm, float max_t, float max_v);
-static void motor_safe_mode(void);
 static void motor_par_send(void);
+static uint8_t motor_pos_init(void);
 
 // ================= 状态机核心 =================
 void fsm_run(fsm_t* fsm) {
 	
- 
+    // 置顶调用！每次跑状态机前，先去喂狗并获取最新的门控状态
+    // 如果返回 0 说明操作员开机后还没拨过哪怕一次开关，系统处于防误触静默期
+    int is_switch_ready = fsm_enable();
 
     switch (fsm->state)
     {
+        case wait_switch:
+            motor_par_send();
+            //  操作员明确拨过一次开关(返回1)
+            if ( is_switch_ready == 1) {
+                fsm->state = fsm_pos_init;
+            }
+            break;
+
         case fsm_pos_init:
-            if (motor_pos_init() == 1) {
-                lock_flag = 0;
-                lock_button_init(); // 回零完成后再初始化按钮
+            motor_par_send();
+            if (motor_pos_init()) { // 回零完成后自动切入下一个状态
+                lock_flag = 0; // 确保进入下一个状态前锁定标志位被重置
                 fsm->state = fsm_judge;
             }
             break;
 
         case fsm_judge:
-            lock_button_judge(fsm);
-            motor_disable_detect();
             break;
 
-        case fsm_lock:
-            motor_lock();
-            lock_button_judge(fsm);
-						motor_disable_detect(); 				
+        case fsm_lock:			
             break;
         
         case fsm_geforce_off:
-            lock_flag = 0; // 解除锁定标志
-						motor_par_send();
-            lock_button_judge(fsm); 
-						motor_disable_detect(); 
-            break;
-        case fsm_protect:
-            motor_safe_mode();
+
             break;
 
+
         default:
-            fsm->state = fsm_pos_init; // 容错处理
+					fsm->state = wait_switch;
             break;
     }
+}
+void fsm_run_test(fsm_t* fsm) {
+    int is_switch_ready = fsm_enable();
+
+    switch (fsm->state)
+    {
+        case wait_switch:
+
+            if ( is_switch_ready == 1) {
+                fsm->state = fsm_geforce_off;
+            }
+            break;
+        case fsm_geforce_off:
+               motor_par_send();
+            break;
+        default:
+					fsm->state = wait_switch;
+            break;
+    }
+}
+
+static void motor_par_send(void)
+{
+	ge_off(&sys);
+    motor_protect_run(); // 先跑保护，确保所有电机命令都在安全范围内
+	ctrl_set();  
+    ctrl_send(); 
 }
 
 // ================= 业务函数区 =================
@@ -68,113 +88,78 @@ void fsm_run(fsm_t* fsm) {
 // 返回 1 表示回零完成，返回 0 表示正在回零
 static uint8_t motor_pos_init(void) 
 {
+    static uint8_t first_run = 1;
+    // 使用静态数组记录各个电机的规划位置和速度，保证下次进入循环能接续积分
+    static float p_des[6] = {0};
+    static float v_des[6] = {0};
+    
+    // ======== 运动学参数 (请根据实际硬件调整) ========
+    const float a_max = 3.0f;      // 最大加速度 (rad/s^2)
+    const float v_max = 25.0f;      // 最大速度 (rad/s)
+    const float dt = 0.005f;       // 控制周期 (默认假设 1ms = 0.001s)
+    
+    // 初次执行时，将当前实际位置作为轨迹起点
+    if (first_run) {
+        for (int i = 0; i < motor_num; i++) {
+            p_des[i] = motor[i].para.pos; 
+            v_des[i] = 0.0f;
+        }
+        first_run = 0;
+    }
+
     float pos_int_err = 0; 
     
     for (int i = 0; i < motor_num; i++) {
-        pos_int_err += fabs(motor[i].para.pos);
+        float p_target = 0.0f; // 目标位置为0
         
+        // 1. 计算当前期望位置到目标位置的距离和方向
+        float error = p_target - p_des[i];
+        float dir = (error > 0) ? 1.0f : -1.0f; // 确定运动方向：error大于0（目标在正方向）时dir为1，否则为-1
 
-        float current_pos = motor[i].para.pos;
-        float target_pos = 0;
-        
-        float max_step = 0.01f; 
-        
-        if (current_pos > max_step) {
-            target_pos = current_pos - max_step; // 稳步递减
-        } else if (current_pos < -max_step) {
-            target_pos = current_pos + max_step; // 稳步递增
+        // 2. 计算如果现在开始全力减速，需要的刹车距离
+        float brake_distance = (v_des[i] * v_des[i]) / (2.0f * a_max);
+
+        // 3. 决定当前的期望加速度 (a_des)
+        float a_des = 0.0f;
+        if (fabs(error) <= brake_distance) {
+            // 【减速段】距离不够了，必须开始刹车
+            a_des = -dir * a_max; 
         } else {
-            target_pos = 0; 
+            // 【加速或匀速段】距离还够
+            if (fabs(v_des[i]) < v_max) {
+                a_des = dir * a_max;
+            } else {
+                a_des = 0.0f;
+                v_des[i] = dir * v_max; // 钳制速度
+            }
         }
 
-        Set_MIT_PVT(&motor[i], target_pos, 0, 0);
-        Set_MIT_PD(&motor[i], 20, 3); 
-    }
+        // 4. 死区处理：防止到达终点时反复震荡 (收敛判定)
+        if (fabsf(error) < 0.002f && fabsf(v_des[i]) < 0.01f) {
+            p_des[i] = p_target;
+            v_des[i] = 0.0f;
+            a_des = 0.0f;
+        } else {
+            // 5. 积分更新期望速度和期望位置
+            v_des[i] += a_des * dt;
+            p_des[i] += v_des[i] * dt;  
+        }
+
+        // 7. 直接给结构体成员赋值下发 MIT 控制指令
+        motor[i].cmd.pos_set = p_des[i];
+        motor[i].cmd.vel_set = v_des[i];
+        motor[i].cmd.kp_set = 2.5f;
+        motor[i].cmd.kd_set = 0.5f;
+
+        // 将当前电机真值误差累加用于统一计算是否整体到达目标
+        pos_int_err += fabs(motor[i].para.pos - p_target);
+    }   
     
-    ge_off(&sys);
-    ctrl_set();  
-    ctrl_send(); 
-    
-    if (pos_int_err < 0.06) {
+    // 如果整体位置偏差足够小，视为回零完成
+    if (pos_int_err < 0.06f) {
+        first_run = 1; // 重置首次运行标志位，以便下次状态切换时重新初始化 
         return 1; // 回零完成
     }
     return 0; // 仍在回零中
-}
-// 传入 fsm 指针以控制状态跳转
-static void lock_button_judge(fsm_t* fsm) 
-{
-    static uint8_t button_judge_flag = 0;
-    
-    button_judge_flag++;
-    if (button_judge_flag >= 4) 
-    {
-        button_judge_flag = 0;
-        // 判断当前物理按键电平与初始化时的电平是否一致
-        // 假设：GPIO_PIN_SET 和 lock_button_flag=1 对应
-        if(lock_button_flag == 1) {
-            if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET) {
-                fsm->state = fsm_lock;
-            } else {
-                fsm->state = fsm_geforce_off;
-            }
-        } else {
-            if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET) {
-                fsm->state = fsm_geforce_off;
-            } else {
-                fsm->state = fsm_lock;
-            }
-        }
-    }
-}
-
-
-
-
-
-/**
- * @brief 锁定按钮初始化
- * @note 记录系统上电/回零完成时的按键初始电平状态
- */
-static void lock_button_init(void) 
-{
-    if(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET) {
-        lock_button_flag = 1; 
-    } else {
-        lock_button_flag = 0; 
-    }
-}
-
-/**
- * @brief 电机位置锁定函数
- * @note 记录进入锁定状态瞬间的位置，并持续输出该位置指令
- */
-static void motor_lock(void) 
-{
-    static float motor_lock_pos[6]; 
-    
-    // lock_flag 在切入本状态前已被置 0 (比如在回零完成或 geforce_off 时)
-    // 所以刚进入锁定的第一个周期，会记录一次当前位置
-    if (lock_flag == 0) {
-        for(int i = 0; i < motor_num; i++) {
-            motor_lock_pos[i] = motor[i].para.pos; 
-        }
-        lock_flag = 1; // 标记已经记录完毕，后续周期不再刷新目标位置
-    }
-    
-    // 持续向所有电机发送锁定位置的指令
-    for(int i = 0; i < motor_num; i++) {
-        Set_MIT_PVT(&motor[i], motor_lock_pos[i], 0, 0); 
-        Set_MIT_PD(&motor[i], 80, 1); // 刚性较高的PD参数，保持位置死锁
-    }
-    
-    // 统一打包发送，必须放在 for 循环外部！
-		motor_par_send();
-}
-
-static void motor_par_send(void)
-{
-		ge_off(&sys);
-	 ctrl_set();  
-     ctrl_send(); 
 }
 

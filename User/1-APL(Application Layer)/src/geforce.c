@@ -51,7 +51,7 @@ void motor_coords_get(CoordinateSystem *sys)
 	sys->motor_coords[motor_2].x = -(motor[motor_2].para.pos+ 1.57f);
 	sys->motor_coords[motor_3].x = sys->motor_coords[motor_2].x + motor[motor_3].para.pos+ 1.57f;
 	sys->motor_coords[motor_4].z = sys->motor_coords[motor_3].x + 1.57f;
-	sys->motor_coords[motor_4].x = motor[motor_4].para.pos;
+	sys->motor_coords[motor_4].x = motor[motor_4].para.pos+1.57f;
 
 	sys->motor_coords[motor_5].z = calculate_theta(sys->motor_coords[motor_3].x, sys->motor_coords[motor_4].x, motor[motor_5].para.pos);
 	sys->motor_coords[motor_5].x = sys->motor_coords[motor_4].z + motor[motor_5].para.pos;
@@ -85,10 +85,10 @@ void ge_off(CoordinateSystem *sys)
 	float t_motor_2 = (sys->world_coords[motor_6].x + sys->world_coords[motor_5].x + sys->world_coords[motor_4].x
 		+ sys->world_coords[motor_3].x) * std_mg;
 
-	motor_t_set(&motor[1], 2.5f, -2.5f,  t_motor_2);
-	motor_t_set(&motor[2], 1.8f, -1.8f,  t_motor_3);
-	motor_t_set(&motor[3], 0.5f, -0.5f,  -t_motor_4);
-	motor_t_set(&motor[4], 0.5f, -0.5f,  t_motor_5);	
+	motor_t_set(&motor[1], 2.7f, -2.7f,  t_motor_2);
+	motor_t_set(&motor[2], 2.0f, -2.0f,  t_motor_3);
+	motor_t_set(&motor[3], 0.6f, -0.6f,  t_motor_4);
+	motor_t_set(&motor[4], 0.6f, -0.6f,  -t_motor_5);	
 }
 
 

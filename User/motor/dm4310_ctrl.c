@@ -177,7 +177,7 @@ void ctrl_enable(void)
 	for (int i = 3; i < 6; i++)
 	{
 		motor[i].start_flag = 1;
-		dm4310_enable(&hcan1, &motor[i]);//dm4310_enable(&hcan2, &motor[i]);
+		dm4310_enable(&hcan2, &motor[i]);//dm4310_enable(&hcan2, &motor[i]);
 	}
 }
 /**
@@ -362,7 +362,7 @@ void ctrl_send(void)
 	for (int i = 3; i < 6; i++)
 	{
 		motor[i].start_flag = 1;
-		dm4310_ctrl_send(&hcan1, &motor[i]);//dm4310_ctrl_send(&hcan2, &motor[i]);
+		dm4310_ctrl_send(&hcan2, &motor[i]);//dm4310_ctrl_send(&hcan2, &motor[i]);
 	}
 }
 /**

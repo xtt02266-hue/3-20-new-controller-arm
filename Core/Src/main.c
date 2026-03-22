@@ -210,11 +210,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   if (htim == &htim2) // 判断中断是否来自于定时器2
   {
 #ifdef UsartToCDC
-    image_transimission_link(&huart5, CC_mode, Kernel_task.to_manipulator_data.data);
+    image_transimission_link(&huart5, CC_mode, fsm_t.to_manipulator_data.data);
 #endif
 
 #ifdef UsartToMatlab
-      char buffer[64];
+      char buffer[64];fsm_t
       int len = sprintf(buffer, "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
               q[0], q[1], q[2], q[3], q[4], q[5]);//2 3 4
       HAL_UART_Transmit_DMA(&huart5, (uint8_t *)(&buffer), len);

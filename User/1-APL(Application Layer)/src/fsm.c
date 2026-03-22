@@ -12,6 +12,7 @@ CoordinateSystem sys;
 
 
 static void motor_par_send(void);
+static void fsm_param_get(fsm_t *fsm);
 
 // ================= 状态机核心 =================
 void fsm_run(fsm_t* fsm) {
@@ -86,6 +87,7 @@ void fsm_run_test(fsm_t* fsm) {
                 break;
 
             case fsm_lock:
+                fsm_param_get(fsm); 
                 if (lock_button_judge() == 0) {
                     lock_flag = 0; 
                     fsm->state = fsm_geforce_off;
@@ -97,7 +99,7 @@ void fsm_run_test(fsm_t* fsm) {
                 break;
 
             case fsm_geforce_off:
-
+                fsm_param_get(fsm); 
                 if (lock_button_judge() == 1) {
                     fsm->state = fsm_lock;
                     break; 
@@ -122,10 +124,10 @@ static void motor_par_send(void)
 
 // ================= 业务函数区 =================
 
-static void fsm_param_get(fsm_t *fsm_param_get)
+static void fsm_param_get(fsm_t *fsm)
 {
 	static uint8_t i;
-	//Button_Callback(fsm_param_get);
+	//Button_Callback(fsm);
 
 	q[0] = motor[0].para.pos;
 	q[1] = motor[1].para.pos;
@@ -136,6 +138,6 @@ static void fsm_param_get(fsm_t *fsm_param_get)
 
 	for(i=0;i<motor_num;i++)
 	{
-		fsm_param_get->to_manipulator_data.param.motor[i].num=motor[i].para.pos;
+		fsm->to_manipulator_data.param.motor[i].num=motor[i].para.pos;
 	}
 }

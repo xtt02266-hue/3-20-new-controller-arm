@@ -17,7 +17,9 @@ typedef union
 	uint8_t data[30];
 	struct
 	{
-		custom_motor_t motor[motor_num]; 
+		struct {
+			float num;
+		} __attribute__((packed)) motor[motor_num]; 
 		uint8_t Button_state[2];//Button_num
 	}__attribute__((packed)) param;
 		

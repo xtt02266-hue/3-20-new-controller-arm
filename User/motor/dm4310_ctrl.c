@@ -390,15 +390,6 @@ void can1_rx_callback(void)
 		case 0x13:
 			dm4310_fbdata(&motor[Motor3], rx_data);
 			break;
-		case 0x14:
-			dm4310_fbdata(&motor[Motor4], rx_data);
-			break;
-		case 0x15:
-			dm4310_fbdata(&motor[Motor5], rx_data);
-			break;
-		case 0x16:
-			dm4310_fbdata(&motor[Motor6], rx_data);
-			break;
 
 	}
 }

@@ -1,9 +1,14 @@
 {
   "configurations": [
     {
-      "name": "windows-gcc-x64",
+      "name": "stm32f446-arm-gcc",
       "includePath": [
-        "${workspaceFolder}/**"
+        "${workspaceFolder}/Core/Inc",
+        "${workspaceFolder}/Drivers/CMSIS/Include",
+        "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32F4xx/Include",
+        "${workspaceFolder}/Drivers/STM32F4xx_HAL_Driver/Inc",
+        "${workspaceFolder}/User/**",
+        "${workspaceFolder}/lib/Inc"
       ],
       "defines": [
         "USE_HAL_DRIVER",
@@ -64,9 +69,24 @@
         "__GNUC_PATCHLEVEL__=1"
       ],
       "intelliSenseMode": "windows-gcc-x64",
-      "cStandard": "${default}",
-      "cppStandard": "${default}",
-      "compilerPath": "E:/mingw64/bin/gcc.exe"
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "compilerPath": "C:/Users/25934/.eide/tools/gcc_arm/bin/arm-none-eabi-gcc.exe",
+      "compilerArgs": [
+        "-mcpu=cortex-m4",
+        "-mthumb"
+      ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}/Core/Inc",
+          "${workspaceFolder}/Drivers/CMSIS/Include",
+          "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32F4xx/Include",
+          "${workspaceFolder}/Drivers/STM32F4xx_HAL_Driver/Inc",
+          "${workspaceFolder}/User",
+          "${workspaceFolder}/lib/Inc"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      }
     }
   ],
   "version": 4

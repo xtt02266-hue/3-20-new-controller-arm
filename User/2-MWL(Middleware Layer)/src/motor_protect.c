@@ -12,16 +12,27 @@ static void motor_vel_protect(void);
 static void motor_tor_protect(void);
 static void motor_overtime_protect(void);
 static void motor_safe_mode(void);
+static int motor_anomaly_detect(void);
+
+#define MOTOR_PROTECT_NUM 6
+#define PROTECT_POS_HARD_MARGIN        0.20f
+#define PROTECT_VEL_HARD_SCALE         1.50f
+#define PROTECT_TOR_HARD_SCALE         1.35f
+#define PROTECT_TOR_VEL_MIN_RATIO      0.20f
+#define PROTECT_OVERTIME_TRIP_COUNT    180
+#define PROTECT_OVERTIME_DECAY_STEP    8
+#define PROTECT_STARTUP_GRACE_CYCLES   200
+#define DISABLE_DETECT_NEED_CONSECUTIVE 2
 
 volatile uint8_t global_system_halt_flag = 0; // 全局系统停机标志位
 
 const motor_limit_t motor_limits[6] = {
-    {.max_tor = 0.5f, .max_vel = 30, .max_pos = 3.0f, .min_pos = -3.0f},
-    {.max_tor = 2.9f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
-    {.max_tor = 2.3f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
-    {.max_tor = 1.2f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
-    {.max_tor = 1.2f, .max_vel = 30, .max_pos = 2.0f, .min_pos = -2.0f},
-    {.max_tor = 0.5f, .max_vel = 30, .max_pos = 5.0f, .min_pos = -5.0f},
+    {.max_tor = 0.6f, .max_vel = 50, .max_pos = 3.0f, .min_pos = -3.0f},
+    {.max_tor = 2.9f, .max_vel = 50, .max_pos = 2.0f, .min_pos = -3.0f},
+    {.max_tor = 2.3f, .max_vel = 50, .max_pos = 1.5f, .min_pos = -1.5f},
+    {.max_tor = 1.2f, .max_vel = 50, .max_pos = 3.0f, .min_pos = -3.0f},
+    {.max_tor = 1.2f, .max_vel = 50, .max_pos = 2.0f, .min_pos = -2.0f},
+    {.max_tor = 0.6f, .max_vel = 50, .max_pos = 5.0f, .min_pos = -5.0f},
 };
 
 /**
@@ -43,18 +54,15 @@ void motor_protect_run(void)
         motor_safe_mode();
         return; 
     }
-
-    motor_pos_protect();
-    motor_vel_protect();
-    motor_tor_protect();
-    motor_disable_detect();
-    motor_overtime_protect();
-    for (int i = 0; i < motor_num; i++) {
-        if(motor[i].cmd.kd_set == 0.0f) {
-            motor[i].cmd.kd_set = 0.1f; // 最小阻尼，防止完全失控
-        }
     
-    }
+    // 强制每周期运行保护函数：
+    // 否则一旦实际位置/速度退回正常区间，恢复控制权（例如解除刚度墙）的逻辑就不会执行，导致电机一直卡在保护的粘滞状态。
+    motor_pos_protect();
+   // motor_vel_protect();
+    motor_tor_protect();
+    motor_overtime_protect();
+    
+    motor_disable_detect();
 }
 
 /**
@@ -67,6 +75,10 @@ void motor_protect_run(void)
  *              采用指针自增遍历优化数组寻址性能。
  ************************************************************************
  **/
+static uint8_t in_pos_limit[6] = {0};
+static float backup_kp[6] = {0};
+static float backup_kd[6] = {0};
+
 static void motor_pos_protect(void)
 {
     motor_t *m = motor;
@@ -76,18 +88,43 @@ static void motor_pos_protect(void)
         float max_p = lim->max_pos;
         float min_p = lim->min_pos;
 
+        // 1. 无条件钳制目标指令：防止上层下发越界的目标位置
+        if (m->cmd.pos_set > max_p) {
+            m->cmd.pos_set = max_p;
+        } else if (m->cmd.pos_set < min_p) {
+            m->cmd.pos_set = min_p;
+        }
+
+        // 2. 对于物理超过限位的情况（比如外力推动），增加虚拟墙阻力
         if (m->para.pos > max_p) {
+            if (!in_pos_limit[i]) {
+                backup_kp[i] = m->cmd.kp_set;
+                backup_kd[i] = m->cmd.kd_set;
+                in_pos_limit[i] = 1;
+            }
             m->cmd.pos_set = max_p;
             m->cmd.vel_set = 0;
-            // 保持原本被计算出的其他力矩补偿，只需要覆盖位置和刚度即可
-            m->cmd.kp_set = 10.0f;
-            m->cmd.kd_set = 2.0f; 
+            if (m->cmd.kp_set < 10.0f) m->cmd.kp_set = 10.0f;
+            if (m->cmd.kd_set < 2.0f) m->cmd.kd_set = 2.0f; 
         }
         else if (m->para.pos < min_p) {
+            if (!in_pos_limit[i]) {
+                backup_kp[i] = m->cmd.kp_set;
+                backup_kd[i] = m->cmd.kd_set;
+                in_pos_limit[i] = 1;
+            }
             m->cmd.pos_set = min_p;
             m->cmd.vel_set = 0;
-            m->cmd.kp_set = 10.0f;
-            m->cmd.kd_set = 2.0f; 
+            if (m->cmd.kp_set < 10.0f) m->cmd.kp_set = 10.0f;
+            if (m->cmd.kd_set < 2.0f) m->cmd.kd_set = 2.0f; 
+        }
+        else {
+            // 当退回限位以内时，恢复应用原先设置的参数，防止粘滞感
+            if (in_pos_limit[i]) {
+                m->cmd.kp_set = backup_kp[i];
+                m->cmd.kd_set = backup_kd[i];
+                in_pos_limit[i] = 0;
+            }
         }
     }
 }
@@ -103,6 +140,9 @@ static void motor_pos_protect(void)
  *              2. 被动保护：检测到实际速度超限时，强制进入纯阻尼刹车模式。
  ************************************************************************
  **/
+static uint8_t in_vel_limit[6] = {0};
+static float backup_vel_kd[6] = {0};
+
 static void motor_vel_protect(void)
 {
     motor_t *m = motor;
@@ -133,17 +173,32 @@ static void motor_vel_protect(void)
         // 【被动保护】：如果受外力等情况实际速度仍然超限，进入超速抑制
         // 错误点2已修复：对受重力的机械臂，绝对不能把 kp_set 设为 0！
         // 突然把位置刚度Kp清零会导致整个机械臂突然丧失支撑力从而下坠，并在速度恢复瞬间P力矩恢复，带来极其暴力的反复震荡。
-        // 正确做法：只加大阻尼Kd进行刹车，但不剥夺原本的位置支撑刚度。
+        // 正确做法：只加大阻尼Kd进行刹车，但不剥夺原本的位置支撑刚度。同时要在恢复时归还控制权。
         if (m->para.vel > max_v) {
+            if (!in_vel_limit[i]) {
+                backup_vel_kd[i] = m->cmd.kd_set;
+                in_vel_limit[i] = 1;
+            }
             m->cmd.vel_set = max_v;
             if (m->cmd.kd_set < 3.0f) {
-                m->cmd.kd_set = 3.0f; // 增加阻尼压制速度
+                m->cmd.kd_set = 2.0f; // 增加阻尼压制速度
             }
         }
         else if (m->para.vel < -max_v) {
+            if (!in_vel_limit[i]) {
+                backup_vel_kd[i] = m->cmd.kd_set;
+                in_vel_limit[i] = 1;
+            }
             m->cmd.vel_set = -max_v;
             if (m->cmd.kd_set < 3.0f) {
-                m->cmd.kd_set = 3.0f; // 增加阻尼压制速度
+                m->cmd.kd_set = 2.0f; // 增加阻尼压制速度
+            }
+        }
+        else {
+            // 速度平稳后归还原先的阻尼系数
+            if (in_vel_limit[i]) {
+                m->cmd.kd_set = backup_vel_kd[i];
+                in_vel_limit[i] = 0;
             }
         }
     }
@@ -165,11 +220,12 @@ static void motor_tor_protect(void)
 
     for (int i = 0; i < motor_num; i++, m++, lim++) {
         float max_t = lim->max_tor;
-        // 直接限幅下发的前馈力矩指令，不修改其他结构体参数
-        if (m->para.tor > max_t) {
+        // 直接限幅下发的前馈力矩指令（对目标指令进行限幅，而不是依赖反馈力矩）
+        // 否则容易导致外界推力大时产生错误的正反馈粘滞力
+        if (m->cmd.tor_set > max_t) {
             m->cmd.tor_set = max_t - 0.01f; 
         }
-        else if (m->para.tor < -max_t) {
+        else if (m->cmd.tor_set < -max_t) {
             m->cmd.tor_set = -max_t + 0.01f; 
         }
     }
@@ -180,40 +236,46 @@ static void motor_tor_protect(void)
  * @brief:      motor_disable_detect: 电机通讯丢失检测与恢复函数
  * @param:      void
  * @retval:     void
- * @details:    定期检查电机状态码，使用高频状态机进行极其短暂的延时恢复，避免长掉电抖动
+ * @details:    
  ************************************************************************
  **/
 void motor_disable_detect(void) 
 {
     static int detect_cnt = 0;
-    static uint16_t recovery_timer[6] = {0}; 
-    motor_t *m = motor;
+    static uint8_t offline_cnt[MOTOR_PROTECT_NUM] = {0};
+    detect_cnt++;
     
-    // 1. 高频恢复状态机（每一个控制周期都会运行，不受 30 次阈值的阻塞）
-    // 给电机留出极短的时间（如 3 毫秒）复位，肉眼和机械臂的惯性无法察觉，不会导致掉力矩抖动
-    for (int i = 0; i < motor_num; i++, m++) {
-        if (recovery_timer[i] > 0) {
-            recovery_timer[i]++;
-            
-            // 发出 clear_err 后，等待 3 个控制周期 再发 enable
-            if (recovery_timer[i] == 3) { 
-                if (i < 3) dm4310_enable(&hcan1, m);
-                else       dm4310_enable(&hcan2, m);
+    if (detect_cnt > 30)  // 每30个周期检测一次
+    {
+        for (int i = 0; i < 3; i++) {
+            if (motor[i].para.state == 0) {
+                if (offline_cnt[i] < 24) {
+                    offline_cnt[i]++;
+                }
+            } else {
+                offline_cnt[i] = 0;
             }
-            // 恢复完成，重置计时器结束状态机
-            else if (recovery_timer[i] > 5) {
-                recovery_timer[i] = 0;
-            }
-        }
-        
-        m = &motor[3]; // [防御性编程] 显式重新对齐指针，防止后续有人修改上面的循环导致指针错位
-        for(int i = 3; i < motor_num; i++, m++) {
-            if (m->para.state == 0x0D) { 
-                dm4310_clear_err(&hcan2, m); // 步骤1：发送清除错误帧
-                dm4310_enable(&hcan2, m);    // 步骤2：重新使能电机
+
+            if (offline_cnt[i] >= DISABLE_DETECT_NEED_CONSECUTIVE) {
+                dm4310_enable(&hcan1, &motor[i]);    // 重新使能电机
+                offline_cnt[i] = 0;
             }
         }
-        detect_cnt = 0; // 重置轮询计数器
+        for(int i = 3; i < motor_num; i++) {
+            if (motor[i].para.state == 0) {
+                if (offline_cnt[i] < 24) {
+                    offline_cnt[i]++;
+                }
+            } else {
+                offline_cnt[i] = 0;
+            }
+
+            if (offline_cnt[i] >= DISABLE_DETECT_NEED_CONSECUTIVE) {
+                dm4310_enable(&hcan2, &motor[i]);    
+                offline_cnt[i] = 0;
+            }
+        }
+        detect_cnt = 0; // 重置计数器
     }
 }
 
@@ -232,32 +294,50 @@ static void motor_overtime_protect(void)
 {
     // 每个电机有一个独立的超时计数器
     static int abnormal_cnt[motor_num] = {0};
+    static uint16_t startup_grace_cnt = 0;
     uint8_t force_safe_flag = 0; // 是否有任何一个电机触发最终安全模式
     
     motor_t *m = motor;
     const motor_limit_t *lim = motor_limits;
 
+    // 上电/模式切换初期给一个宽限窗口，避免重力补偿切入时的瞬态被误判为硬故障
+    if (startup_grace_cnt < PROTECT_STARTUP_GRACE_CYCLES) {
+        startup_grace_cnt++;
+        for (int i = 0; i < motor_num; i++) {
+            if (abnormal_cnt[i] > 0) {
+                abnormal_cnt[i] -= PROTECT_OVERTIME_DECAY_STEP;
+                if (abnormal_cnt[i] < 0) {
+                    abnormal_cnt[i] = 0;
+                }
+            }
+        }
+        return;
+    }
+
     for (int i = 0; i < motor_num; i++, m++, lim++) {
-        // 判断自身是否处于异常区（包含位置越界、速度超限、力矩超限）
-        if (m->para.pos > lim->max_pos ||
-            m->para.pos < lim->min_pos ||
-            fabsf(m->para.vel) > lim->max_vel ||
-            fabsf(m->cmd.tor_set) > lim->max_tor) 
+        // 熔断只关注“硬异常”: 传感实测超过带裕量阈值；不使用 cmd.tor_set，避免重力补偿时误判
+        uint8_t hard_pos = (m->para.pos > (lim->max_pos + PROTECT_POS_HARD_MARGIN)) ||
+                           (m->para.pos < (lim->min_pos - PROTECT_POS_HARD_MARGIN));
+        uint8_t hard_vel = fabsf(m->para.vel) > (lim->max_vel * PROTECT_VEL_HARD_SCALE);
+        uint8_t hard_tor = (fabsf(m->para.tor) > (lim->max_tor * PROTECT_TOR_HARD_SCALE)) &&
+                           (fabsf(m->para.vel) > (lim->max_vel * PROTECT_TOR_VEL_MIN_RATIO));
+
+        if (hard_pos || hard_vel || hard_tor)
         {
             abnormal_cnt[i]++;
         } 
         else {
             if (abnormal_cnt[i] > 0) {
                 // 如果回到了正常状态，快速下降清零，防止在高频震荡（临界点抽搐）中被错误累加触发保护
-                abnormal_cnt[i] -= 10; 
+                abnormal_cnt[i] -= PROTECT_OVERTIME_DECAY_STEP;
                 if (abnormal_cnt[i] < 0) {
                     abnormal_cnt[i] = 0;
                 }
             }
         }
 
-        // 如果异常持续超过 200 次（约1000ms），强制熔断
-        if (abnormal_cnt[i] > 200) {
+        // 只有“硬异常”连续持续才触发熔断
+        if (abnormal_cnt[i] > PROTECT_OVERTIME_TRIP_COUNT) {
             force_safe_flag = 1;
         }
     }
@@ -286,3 +366,21 @@ static void motor_safe_mode(void)
     }
 }
 
+static int motor_anomaly_detect(void)
+{
+    for(int i = 0; i < motor_num; i++) {
+        if (motor[i].para.pos > motor_limits[i].max_pos ||
+            motor[i].para.pos < motor_limits[i].min_pos ||
+            fabsf(motor[i].para.vel) > motor_limits[i].max_vel ||
+            fabsf(motor[i].para.tor) > motor_limits[i].max_tor) 
+        {
+            return 1; // 只要有一个电机异常就返回1
+        }
+    }
+    return 0; // 必须返回0，否则会产生未定义行为导致保护机制紊乱
+}
+
+void protected_from_geforce(void) //直接使用重力补偿力矩检测电机是否处于异常状态
+{
+   
+}

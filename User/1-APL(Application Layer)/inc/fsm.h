@@ -1,6 +1,7 @@
 #ifndef __FSM_H
 #define __FSM_H
-
+#include "main.h"
+#include "dm4310_ctrl.h"
 typedef enum
 {
     fsm_pos_init,
@@ -10,11 +11,26 @@ typedef enum
 		fsm_protect,
 		wait_switch,
 } fsm_state_t;
+
+typedef union
+{
+	uint8_t data[30];
+	struct
+	{
+		custom_motor_t motor[motor_num]; 
+		uint8_t Button_state[2];//Button_num
+	}__attribute__((packed)) param;
+		
+}fsm_param_t;
+
 typedef struct
 {
     fsm_state_t state;
+    fsm_param_t to_manipulator_data;
 		int TEST;
 } fsm_t;
+
+
 
 void fsm_run(fsm_t* fsm);
 void fsm_run_test(fsm_t* fsm); 

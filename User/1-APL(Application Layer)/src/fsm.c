@@ -9,6 +9,9 @@
 #include "motor_function.h"
 
 CoordinateSystem sys;
+float q[6];
+float arm[6];
+float q_ikine[6];
 
 
 static void motor_par_send(void);
@@ -105,8 +108,10 @@ void fsm_run_test(fsm_t* fsm) {
                     break; 
                 }
                 for(int i = 0; i < motor_num; i++) {
-                    Set_MIT_PVT(&motor[i], 0, 0, 0); 
-                    Set_MIT_PD(&motor[i], 0, 0.05); // 刚性较低的PD参数，重力补偿
+                    motor[i].cmd.pos_set = 0; 
+                    motor[i].cmd.vel_set = 0;
+                    motor[i].cmd.kp_set = 0;
+                    motor[i].cmd.kd_set = 0.08;
                 }
                 motor_par_send();
                 break;
@@ -124,10 +129,10 @@ static void motor_par_send(void)
 
 // ================= 业务函数区 =================
 
-static void fsm_param_get(fsm_t *fsm)
+void fsm_param_get(fsm_t *fsm)
 {
 	static uint8_t i;
-	//Button_Callback(fsm);
+	Switch_Callback(fsm);
 
 	q[0] = motor[0].para.pos;
 	q[1] = motor[1].para.pos;

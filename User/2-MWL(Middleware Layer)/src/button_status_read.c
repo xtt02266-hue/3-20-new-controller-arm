@@ -49,7 +49,7 @@ uint8_t lock_button_judge(void)
     
 }
 
-void Button_Callback(fsm_t * fsm_button_callback)
+void Switch_Callback(fsm_t * fsm_button_callback)
 {
 
         if(HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_8) == GPIO_PIN_SET)//爪子
@@ -60,7 +60,6 @@ void Button_Callback(fsm_t * fsm_button_callback)
         {      
             fsm_button_callback->to_manipulator_data.param.Button_state[1] = 0;
         }
-
 
 }
 

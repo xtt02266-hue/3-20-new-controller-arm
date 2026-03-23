@@ -44,19 +44,12 @@ void Kernel_run(Kernel_t *Kernel_run)
 	/*****״̬��2*****/
 	else if(Kernel_run->ret == 2)
 	{	
-		Button_Callback(Kernel_run);
 
 		
 
 
 	}
-//	else if(Kernel_run->ret == -1)
-//	{
-//		
-//	}
-	//���ݸ���
-	Kernel_param_update(Kernel_run);
-}
+
 	
 /**
  * @brief Kernel��ʼ��
@@ -104,8 +97,7 @@ static void Kernel_param_get(Kernel_t *Kernel_param_get)
 
 	for(i=0;i<motor_num;i++)
 	{
-		Kernel_param_get->Kernel_cmd_to_manipulator_quadraticInterpolation_param[i].theta_now=motor[i].para.pos;
-		Kernel_param_get->to_manipulator_data.param.motor[i].num=motor[i].para.pos;
+
 	}
 }
 

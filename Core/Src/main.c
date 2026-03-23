@@ -58,8 +58,8 @@ fsm_t fsm;
 /* USER CODE BEGIN PD */
 // 有关串口使用定义
 // #define UsartToMatlab//matlab通信
-//  #define UsartToCDC//裁判系统通信（原先写的）
- #define UsartTest//lora无线串口通信
+ #define UsartToCDC//裁判系统通信（原先写的）
+ //#define UsartTest//lora无线串口通信
 
 /* USER CODE END PD */
 
@@ -210,7 +210,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   if (htim == &htim2) // 判断中断是否来自于定时器2
   {
 #ifdef UsartToCDC
-    image_transimission_link(&huart5, CC_mode, fsm_t.to_manipulator_data.data);
+    image_transimission_link(&huart5, CC_mode, fsm.to_manipulator_data.data);
 #endif
 
 #ifdef UsartToMatlab

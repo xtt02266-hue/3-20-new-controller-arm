@@ -28,7 +28,6 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
 #include "scheduler.h"
-#include "Kernel.h"
 /* USER CODE END TD */
 
 /* Private define ------------------------------------------------------------*/

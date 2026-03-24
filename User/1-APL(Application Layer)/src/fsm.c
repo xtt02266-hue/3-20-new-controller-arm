@@ -1,4 +1,3 @@
-#include "Callback_Button.h"
 #include "dm4310_ctrl.h"
 #include "dm4310_drv.h"
 #include "geforce.h"
@@ -57,6 +56,7 @@ void fsm_run(fsm_t* fsm) {
 }
 void fsm_run_test(fsm_t* fsm) {
     static uint8_t is_fsm_started = 0;
+    fsm_param_get(fsm); 
     if (is_fsm_started == 0) {
         fsm->state = wait_switch; // 强制开机第一拍进入等待开关状态
         is_fsm_started = 1;
@@ -90,7 +90,6 @@ void fsm_run_test(fsm_t* fsm) {
                 break;
 
             case fsm_lock:
-                fsm_param_get(fsm); 
                 if (lock_button_judge() == 0) {
                     lock_flag = 0; 
                     fsm->state = fsm_geforce_off;
@@ -102,7 +101,6 @@ void fsm_run_test(fsm_t* fsm) {
                 break;
 
             case fsm_geforce_off:
-                fsm_param_get(fsm); 
                 if (lock_button_judge() == 1) {
                     fsm->state = fsm_lock;
                     break; 

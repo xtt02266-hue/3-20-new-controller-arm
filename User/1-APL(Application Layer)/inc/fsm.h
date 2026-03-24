@@ -32,6 +32,10 @@ typedef struct
 		int TEST;
 } fsm_t;
 
+extern float arm[6];
+extern float q[6];
+extern float q_ikine[6];
+
 
 
 void fsm_run(fsm_t* fsm);

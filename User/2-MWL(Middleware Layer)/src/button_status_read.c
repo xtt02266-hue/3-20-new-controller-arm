@@ -51,16 +51,11 @@ uint8_t lock_button_judge(void)
 
 void Switch_Callback(fsm_t * fsm_button_callback)
 {
+	//fsm_button_callback->to_manipulator_data.param.Button_state[0] =
+		//(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET) ? 0xFF : 0x00;
 
-        if(HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_8) == GPIO_PIN_SET)//爪子
-        {
-            fsm_button_callback->to_manipulator_data.param.Button_state[1] = 1;
-        }
-        else if(HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_8) == GPIO_PIN_RESET)
-        {      
-            fsm_button_callback->to_manipulator_data.param.Button_state[1] = 0;
-        }
-
+	fsm_button_callback->to_manipulator_data.param.Button_state[1] =
+		(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8) == GPIO_PIN_SET) ? 0xFF : 0x00;
 }
 
 

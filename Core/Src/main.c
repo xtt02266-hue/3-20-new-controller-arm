@@ -41,8 +41,6 @@
 #include "string.h"
 #include "dm4310_ctrl.h"
 #include "dm4310_drv.h"
-#include "Callback_Button.h"
-#include "Kernel.h"
 #include "uart_drv_test.h"
 #include "stdio.h"
 #include "fsm.h"
@@ -133,7 +131,7 @@ int main(void)
   HAL_Delay(100);
   ctrl_enable();
   HAL_Delay(100);
-	for (int i = 0;i<50;i++)
+	for (int i = 0;i<20;i++)
 	{
 			ctrl_enable();
 			HAL_Delay(20);
@@ -206,7 +204,7 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-  /**********33.33HZ************/
+  /**********<=30HZ************/
   if (htim == &htim2) // 判断中断是否来自于定时器2
   {
 #ifdef UsartToCDC

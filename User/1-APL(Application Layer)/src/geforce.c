@@ -1,8 +1,6 @@
 #include "geforce.h"                 // 内核主头文件
-#include "Callback_Button.h"        // 按钮回调函数
 #include "dm4310_ctrl.h"            // DM4310电机控制
 #include "dm4310_drv.h"             // DM4310电机驱动
-#include "Kernel_behaviour.h"       // 内核行为模式
 #include "math.h"
 
 void motor_t_set(motor_t *motor, float max, float min, float torque)

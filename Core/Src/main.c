@@ -131,7 +131,7 @@ int main(void)
   HAL_Delay(100);
   ctrl_enable();
   HAL_Delay(100);
-	for (int i = 0;i<20;i++)
+	for (int i = 0;i<50;i++)
 	{
 			ctrl_enable();
 			HAL_Delay(20);

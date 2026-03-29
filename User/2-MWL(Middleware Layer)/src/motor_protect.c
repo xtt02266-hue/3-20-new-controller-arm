@@ -26,9 +26,9 @@ static int motor_anomaly_detect(void);
 volatile uint8_t global_system_halt_flag = 0; // 全局系统停机标志位
 
 const motor_limit_t motor_limits[6] = {
-    {.max_tor = 0.6f, .max_vel = 50, .max_pos = 3.0f, .min_pos = -3.0f},
+    {.max_tor = 0.6f, .max_vel = 50, .max_pos = 2.0f, .min_pos = -2.0f},
     {.max_tor = 2.9f, .max_vel = 50, .max_pos = 2.0f, .min_pos = -3.0f},
-    {.max_tor = 2.3f, .max_vel = 50, .max_pos = 1.5f, .min_pos = -1.5f},
+    {.max_tor = 2.3f, .max_vel = 50, .max_pos = 0.3f, .min_pos = -2.2f},
     {.max_tor = 1.2f, .max_vel = 50, .max_pos = 3.0f, .min_pos = -3.0f},
     {.max_tor = 1.2f, .max_vel = 50, .max_pos = 2.0f, .min_pos = -2.0f},
     {.max_tor = 0.6f, .max_vel = 50, .max_pos = 5.0f, .min_pos = -5.0f},

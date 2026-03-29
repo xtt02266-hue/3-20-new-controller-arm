@@ -35,15 +35,15 @@ uint8_t lock_button_judge(void)
 
         if(lock_button_flag == 0) {
             if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET) {
-                return 1; // 进入 geforce_off 状态
+                return 1; 
             } else {
-                return 0; // 进入 lock 状态
+                return 0; 
             }
         } else {
             if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET) {
-                return 0; // 进入 geforce_off 状态
+                return 0; 
             } else {
-                return 1; // 进入 lock 状态
+                return 1; 
             }
         }
     
@@ -51,11 +51,10 @@ uint8_t lock_button_judge(void)
 
 void Switch_Callback(fsm_t * fsm_button_callback)
 {
-	//fsm_button_callback->to_manipulator_data.param.Button_state[0] =
-		//(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9) == GPIO_PIN_SET) ? 0xFF : 0x00;
-
-	fsm_button_callback->to_manipulator_data.param.Button_state[1] =
+    fsm_button_callback->to_manipulator_data.param.Button_state[0] =
 		(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8) == GPIO_PIN_SET) ? 0xFF : 0x00;
+    fsm_button_callback->to_manipulator_data.param.Button_state[1] =
+		(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7) == GPIO_PIN_SET) ? 0xFF : 0x00;
 }
 
 

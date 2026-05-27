@@ -24,18 +24,20 @@ void fsm_run(fsm_t* fsm) {
     switch (fsm->state)
     {
         case wait_switch:
-            /* 在等待拨动开关的无操作静默期，什么控制指令也不发，直接待机 */
+            /* 在等待拨动开关时发送零力矩指令，用于持续刷新电机反馈位置 */
+            motor_wait_feedback_update();
             if ( 1) {
+                motor_pos_init_reset();
                 fsm->state = fsm_pos_init;
             }
             break;
 
         case fsm_pos_init:
-            motor_par_send();
             if (motor_pos_init()) { // 回零完成后自动切入下一个状态
                 lock_flag = 0; // 确保进入下一个状态前锁定标志位被重置
                 fsm->state = fsm_judge;
             }
+            motor_par_send();
             break;
 
         case fsm_judge:
@@ -56,7 +58,15 @@ void fsm_run(fsm_t* fsm) {
 }
 void fsm_run_test(fsm_t* fsm) {
     static uint8_t is_fsm_started = 0;
+    static uint8_t lock_pin7_state_inited = 0;
+    static GPIO_PinState lock_pin7_last_state = GPIO_PIN_RESET;
+    GPIO_PinState current_pin7_state = GPIO_PIN_RESET;
     fsm_param_get(fsm); 
+
+    if ((fsm->state != fsm_lock) && (fsm->state != fsm_test)) {
+        lock_pin7_state_inited = 0;
+    }
+
     if (is_fsm_started == 0) {
         fsm->state = wait_switch; // 强制开机第一拍进入等待开关状态
         is_fsm_started = 1;
@@ -65,19 +75,21 @@ void fsm_run_test(fsm_t* fsm) {
     switch (fsm->state)
     {
         case wait_switch:
-            /* 在等待拨动开关的无操作静默期，什么控制指令也不发，直接待机 */
+            /* 在等待拨动开关时发送零力矩指令，用于持续刷新电机反馈位置 */
+            motor_wait_feedback_update();
             if ( lock_button_enable() == 1) {
+                motor_pos_init_reset();
                 fsm->state = fsm_pos_init;
             }
             break;
 
             case fsm_pos_init:
-            motor_par_send();
             if (motor_pos_init()) { // 回零完成后自动切入下一个状态
                 lock_flag = 0; // 确保进入下一个状态前锁定标志位被重置
 
                 fsm->state = fsm_judge;
             }
+            motor_par_send();
             break;
 
             case fsm_judge:
@@ -95,6 +107,22 @@ void fsm_run_test(fsm_t* fsm) {
                     fsm->state = fsm_geforce_off;
                     break; 
                 }
+
+                current_pin7_state = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7);
+                if (lock_pin7_state_inited == 0) {
+                    lock_pin7_last_state = current_pin7_state;
+                    lock_pin7_state_inited = 1;
+                }
+
+                if ((lock_pin7_last_state == GPIO_PIN_RESET) &&
+                    (current_pin7_state == GPIO_PIN_SET)) {
+                    lock_pin7_last_state = current_pin7_state;
+                    motor_pos_run_reset();
+                    fsm->state = fsm_test;
+                    break; 
+                }
+
+                lock_pin7_last_state = current_pin7_state;
                 
                 motor_lock();
                 motor_par_send();			
@@ -105,13 +133,26 @@ void fsm_run_test(fsm_t* fsm) {
                     fsm->state = fsm_lock;
                     break; 
                 }
-                for(int i = 0; i < motor_num; i++) {
+                for(int i = 0; i < motor_num-1; i++) {
                     motor[i].cmd.pos_set = 0; 
                     motor[i].cmd.vel_set = 0;
                     motor[i].cmd.kp_set = 0;
                     motor[i].cmd.kd_set = 0.08;
                 }
+                    motor[5].cmd.pos_set = 0; 
+                    motor[5].cmd.vel_set = 0;
+                    motor[5].cmd.kp_set = 0;
+                    motor[5].cmd.kd_set = 0;
                 motor_par_send();
+                break;
+            case fsm_test:
+             motor_par_send();
+            if (motor_pos_run()) { // 回零完成后自动切入下一个状态
+                lock_flag = 0; // 确保进入下一个状态前锁定标志位被重置
+                if(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7) == GPIO_PIN_RESET) {
+                    fsm->state = fsm_lock;
+                }  
+            }
                 break;
 
     }
@@ -119,7 +160,9 @@ void fsm_run_test(fsm_t* fsm) {
 
 static void motor_par_send(void)
 {
-	ge_off(&sys);
+    // 传入各个关节的实际称重质量（单位：kg）
+// 例如：电机2 = 0.4kg, 电机3 = 0.4kg, 电机4 = 0.35kg, 电机5 = 0.3kg, 电机6+夹嘴 = 0.25kg
+    ge_off(&sys, 4.2f, 4.25f, 4.15f, 4.27f, 4.1f);
     motor_protect_run(); // 先跑保护，确保所有电机命令都在安全范围内
 	ctrl_set();  
     ctrl_send(); 

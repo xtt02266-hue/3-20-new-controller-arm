@@ -10,6 +10,7 @@ typedef enum
     fsm_judge,
 	fsm_protect,
 	wait_switch,
+	fsm_test,
 } fsm_state_t;
 
 typedef union

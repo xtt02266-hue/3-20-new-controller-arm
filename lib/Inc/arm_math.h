@@ -406,7 +406,11 @@ extern "C"
   /**
    * @brief definition to read/write two 16 bit values.
    */
-#if defined __CC_ARM
+#if defined(__ARMCC_VERSION) && (__ARMCC_VERSION >= 6010050)
+  /* ARM Compiler 6 (armclang) */
+  #define __SIMD32_TYPE int32_t
+  #define CMSIS_UNUSED __attribute__((unused))
+#elif defined __CC_ARM
   #define __SIMD32_TYPE int32_t __packed
   #define CMSIS_UNUSED __attribute__((unused))
 #elif defined __ICCARM__
@@ -6105,7 +6109,7 @@ void arm_rfft_fast_f32(
     {
 
 //      #if __FPU_USED
-#if (__FPU_USED == 1) && defined ( __CC_ARM   )
+#if (__FPU_USED == 1) && (defined ( __CC_ARM ) || defined(__ARMCC_VERSION))
       *pOut = __sqrtf(in);
 #else
       *pOut = sqrtf(in);
@@ -7467,7 +7471,7 @@ void arm_rfft_fast_f32(
     a = (q31_t) (((q63_t) x * y ) >> 32)
 
 
-#if defined ( __CC_ARM ) //Keil
+#if defined ( __CC_ARM ) || defined(__ARMCC_VERSION) //Keil (AC5 or AC6)
 
 //Enter low optimization region - place directly above function definition
     #ifdef ARM_MATH_CM4

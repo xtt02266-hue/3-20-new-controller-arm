@@ -27,11 +27,11 @@ volatile uint8_t global_system_halt_flag = 0; // 全局系统停机标志位
 
 const motor_limit_t motor_limits[6] = {
     {.max_tor = 0.6f, .max_vel = 50, .max_pos = 2.0f, .min_pos = -2.0f},
-    {.max_tor = 2.9f, .max_vel = 50, .max_pos = 1.0f, .min_pos = -3.0f},
-    {.max_tor = 2.3f, .max_vel = 50, .max_pos = 0.3f, .min_pos = -2.2f},
+    {.max_tor = 2.9f, .max_vel = 50, .max_pos = 1.0f, .min_pos = -2.4f},
+    {.max_tor = 2.3f, .max_vel = 50, .max_pos = 0.8f, .min_pos = -2.2f},
     {.max_tor = 1.2f, .max_vel = 50, .max_pos = 3.0f, .min_pos = -3.0f},
     {.max_tor = 1.2f, .max_vel = 50, .max_pos = 2.0f, .min_pos = -2.0f},
-    {.max_tor = 0.6f, .max_vel = 50, .max_pos = 3.2f, .min_pos = -3.2f},
+    {.max_tor = 0.6f, .max_vel = 50, .max_pos = 3.3f, .min_pos = -3.2f},
 };
 
 /**
@@ -58,8 +58,8 @@ void motor_protect_run(void)
     // 否则一旦实际位置/速度退回正常区间，恢复控制权（例如解除刚度墙）的逻辑就不会执行，导致电机一直卡在保护的粘滞状态。
     motor_pos_protect();
    // motor_vel_protect();
-    motor_tor_protect();
-    motor_overtime_protect();
+    //motor_tor_protect();
+    //motor_overtime_protect();
     
     motor_disable_detect();
 }
